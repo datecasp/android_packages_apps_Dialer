@@ -21,7 +21,6 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.media.RingtoneManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -43,38 +42,9 @@ import com.android.dialer.util.SettingsUtil;
 public class SoundSettingsFragment extends PreferenceFragment
     implements Preference.OnPreferenceChangeListener {
 
-  private static final int NO_DTMF_TONE = 0;
-  private static final int PLAY_DTMF_TONE = 1;
-
   private static final int NO_VIBRATION_FOR_CALLS = 0;
   private static final int DO_VIBRATION_FOR_CALLS = 1;
-
-  private static final int DTMF_TONE_TYPE_NORMAL = 0;
-
-  private static final int MSG_UPDATE_RINGTONE_SUMMARY = 1;
-
-  private Preference ringtonePreference;
-  private final Handler ringtoneLookupComplete =
-      new Handler() {
-        @Override
-        public void handleMessage(Message msg) {
-          switch (msg.what) {
-            case MSG_UPDATE_RINGTONE_SUMMARY:
-              ringtonePreference.setSummary((CharSequence) msg.obj);
-              break;
-          }
-        }
-      };
-  private final Runnable ringtoneLookupRunnable =
-      new Runnable() {
-        @Override
-        public void run() {
-          updateRingtonePreferenceSummary();
-        }
-      };
-  private SwitchPreference vibrateWhenRinging;
-  private SwitchPreference playDtmfTone;
-  private ListPreference dtmfToneLength;
+  
   private SwitchPreference enableDndInCall;
 
   private NotificationManager notificationManager;
@@ -91,20 +61,25 @@ public class SoundSettingsFragment extends PreferenceFragment
     addPreferencesFromResource(R.xml.sound_settings);
 
     Context context = getActivity();
+    
+    final Preference systemSoundsAndVibrationSettings = (Preference) findPreference("system_sounds_and_vibration_settings");
+    systemSoundsAndVibrationSettings.setTitle(String.format(
+         context.getString(R.string.system_sounds_and_vibration_title), 
+         context.getString(R.string.sounds_and_vibration_title).toLowerCase()));
+	  systemSoundsAndVibrationSettings.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
+	    public boolean onPreferenceClick(Preference preference) {
+			Intent soundSettingIntent = new Intent(Settings.ACTION_SOUND_SETTINGS);
+			                    soundSettingIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+			                    soundSettingIntent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
+			                    soundSettingIntent.addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+	        startActivity(soundSettingIntent);
 
-    ringtonePreference = findPreference(context.getString(R.string.ringtone_preference_key));
-    vibrateWhenRinging =
-        (SwitchPreference) findPreference(context.getString(R.string.vibrate_on_preference_key));
-    playDtmfTone =
-        (SwitchPreference) findPreference(context.getString(R.string.play_dtmf_preference_key));
-    dtmfToneLength =
-        (ListPreference)
-            findPreference(context.getString(R.string.dtmf_tone_length_preference_key));
+	        return true;
+	     }
+	  });
     enableDndInCall = (SwitchPreference) findPreference("incall_enable_dnd");
 
-    if (hasVibrator()) {
-      vibrateWhenRinging.setOnPreferenceChangeListener(this);
-    } else {
+    if (!hasVibrator()){
       PreferenceScreen ps = getPreferenceScreen();
       Preference inCallVibrateOutgoing = findPreference(
           context.getString(R.string.incall_vibrate_outgoing_key));
@@ -114,33 +89,18 @@ public class SoundSettingsFragment extends PreferenceFragment
           context.getString(R.string.incall_vibrate_hangup_key));
       Preference inCallVibrate45Secs = findPreference(
           context.getString(R.string.incall_vibrate_45_key));
-      ps.removePreference(vibrateWhenRinging);
       ps.removePreference(inCallVibrateOutgoing);
       ps.removePreference(inCallVibrateCallWaiting);
       ps.removePreference(inCallVibrateHangup);
       ps.removePreference(inCallVibrate45Secs);
-      vibrateWhenRinging = null;
     }
 
-    playDtmfTone.setOnPreferenceChangeListener(this);
-    playDtmfTone.setChecked(shouldPlayDtmfTone());
 
     enableDndInCall.setOnPreferenceChangeListener(this);
 
     TelephonyManager telephonyManager =
         (TelephonyManager) getActivity().getSystemService(Context.TELEPHONY_SERVICE);
-    if (telephonyManager.canChangeDtmfToneLength()
-        && (telephonyManager.isWorldPhone() || !shouldHideCarrierSettings())) {
-      dtmfToneLength.setOnPreferenceChangeListener(this);
-      dtmfToneLength.setValueIndex(
-          Settings.System.getInt(
-              context.getContentResolver(),
-              Settings.System.DTMF_TONE_TYPE_WHEN_DIALING,
-              DTMF_TONE_TYPE_NORMAL));
-    } else {
-      getPreferenceScreen().removePreference(dtmfToneLength);
-      dtmfToneLength = null;
-    }
+
     if (!CallRecorderService.isEnabled(getActivity())) {
       getPreferenceScreen().removePreference(
           findPreference(context.getString(R.string.call_recording_category_key)));
@@ -158,13 +118,6 @@ public class SoundSettingsFragment extends PreferenceFragment
       getActivity().onBackPressed();
       return;
     }
-
-    if (vibrateWhenRinging != null) {
-      vibrateWhenRinging.setChecked(shouldVibrateWhenRinging());
-    }
-
-    // Lookup the ringtone name asynchronously.
-    new Thread(ringtoneLookupRunnable).start();
   }
 
   /**
@@ -184,17 +137,7 @@ public class SoundSettingsFragment extends PreferenceFragment
           .show();
       return true;
     }
-    if (preference == vibrateWhenRinging) {
-      boolean doVibrate = (Boolean) objValue;
-      Settings.System.putInt(
-          getActivity().getContentResolver(),
-          Settings.System.VIBRATE_WHEN_RINGING,
-          doVibrate ? DO_VIBRATION_FOR_CALLS : NO_VIBRATION_FOR_CALLS);
-    } else if (preference == dtmfToneLength) {
-      int index = dtmfToneLength.findIndexOfValue((String) objValue);
-      Settings.System.putInt(
-          getActivity().getContentResolver(), Settings.System.DTMF_TONE_TYPE_WHEN_DIALING, index);
-    } else if (preference == enableDndInCall) {
+    if (preference == enableDndInCall) {
       boolean newValue = (Boolean) objValue;
       if (newValue && !notificationManager.isNotificationPolicyAccessGranted()) {
         new AlertDialog.Builder(getContext())
@@ -233,48 +176,7 @@ public class SoundSettingsFragment extends PreferenceFragment
           .show();
       return true;
     }
-    if (preference == playDtmfTone) {
-      Settings.System.putInt(
-          getActivity().getContentResolver(),
-          Settings.System.DTMF_TONE_WHEN_DIALING,
-          playDtmfTone.isChecked() ? PLAY_DTMF_TONE : NO_DTMF_TONE);
-    }
     return true;
-  }
-
-  /** Updates the summary text on the ringtone preference with the name of the ringtone. */
-  private void updateRingtonePreferenceSummary() {
-    SettingsUtil.updateRingtoneName(
-        getActivity(),
-        ringtoneLookupComplete,
-        RingtoneManager.TYPE_RINGTONE,
-        ringtonePreference.getKey(),
-        MSG_UPDATE_RINGTONE_SUMMARY);
-  }
-
-  /**
-   * Obtain the value for "vibrate when ringing" setting. The default value is false.
-   *
-   * <p>Watch out: if the setting is missing in the device, this will try obtaining the old "vibrate
-   * on ring" setting from AudioManager, and save the previous setting to the new one.
-   */
-  private boolean shouldVibrateWhenRinging() {
-    int vibrateWhenRingingSetting =
-        Settings.System.getInt(
-            getActivity().getContentResolver(),
-            Settings.System.VIBRATE_WHEN_RINGING,
-            NO_VIBRATION_FOR_CALLS);
-    return hasVibrator() && (vibrateWhenRingingSetting == DO_VIBRATION_FOR_CALLS);
-  }
-
-  /** Obtains the value for dialpad/DTMF tones. The default value is true. */
-  private boolean shouldPlayDtmfTone() {
-    int dtmfToneSetting =
-        Settings.System.getInt(
-            getActivity().getContentResolver(),
-            Settings.System.DTMF_TONE_WHEN_DIALING,
-            PLAY_DTMF_TONE);
-    return dtmfToneSetting == PLAY_DTMF_TONE;
   }
 
   /** Whether the device hardware has a vibrator. */
