@@ -497,6 +497,10 @@
        dialpad tones, and vibration for incoming calls. [CHAR LIMIT=40] -->
   <string name="sounds_and_vibration_title">Sounds and vibration</string>
 
+  <!-- Title for the "System Sounds and vibration" settings control settings related to ringtones,
+       dialpad tones, and vibration for incoming calls. [CHAR LIMIT=40] -->
+  <string name="system_sounds_and_vibration_title">System %1$s</string>
+
   <!-- Title for "Accessibility" category, which controls settings such as TTY mode and hearing
        aid compatability. [CHAR LIMIT=40] -->
   <string name="accessibility_settings_title">Accessibility</string>
@@ -600,7 +604,7 @@
   <string name="phone_account_settings_label">Calling accounts</string>
 
   <!-- Internal key for ringtone preference. -->
-  <string name="ringtone_preference_key" translatable="false">button_ringtone_key</string>
+  <string name="system_sounds_and_vibration_settings" translatable="false">system_sounds_and_vibration_settings</string>
   <!-- Internal key for vibrate when ringing preference. -->
   <string name="vibrate_on_preference_key" translatable="false">button_vibrate_on_ring</string>
   <!-- Internal key for vibrate when ringing preference. -->
